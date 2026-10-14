@@ -89,7 +89,7 @@ let nextDay = p.engine.calendar.date(byAdding: .day, value: 1, to: fixedDay)!
 check(StatusDayIcon.dayText(date: fixedDay, calendar: p.engine.calendar, locale: p.locale) == "14", "Menu bar shows the day number")
 check(StatusDayIcon.dayText(date: nextDay, calendar: p.engine.calendar, locale: p.locale) == "15", "Day number updates after midnight")
 let badge = StatusDayIcon.make(date: fixedDay, calendar: p.engine.calendar, locale: p.locale)
-check(badge.isTemplate && badge.size == NSSize(width: 18, height: 16), "Day badge is small, slightly flattened and adapts to menu bar appearance")
+check(badge.isTemplate && badge.size == NSSize(width: 20, height: 16), "Day badge matches the wider rounded reference beside the volume icon")
 if let rep = NSBitmapImageRep(data: badge.tiffRepresentation!), let png = rep.representation(using: .png, properties: [:]) {
     try png.write(to: URL(fileURLWithPath: "build/native-day-icon.png"))
     let colors = (4..<(rep.pixelsHigh - 4)).flatMap { y in
