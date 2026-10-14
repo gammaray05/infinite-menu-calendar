@@ -43,8 +43,16 @@ for i in 0..<40 {
     check(abs(Double(scroll.contentView.bounds.minY) - adjusted.entries[index].y - 17.375) < 0.001,
         "Native recenter preserves fractional pixel offset")
     check(adjusted.entries.count == 313, "Native week storage remains bounded")
-    check(scroll.viewport.month == adjusted.visibleMonth(origin: Double(scroll.contentView.bounds.minY), viewportHeight: Double(scroll.contentSize.height)), "Pinned month updates while scrolling")
+    let expectedMonth = adjusted.visibleMonth(origin: Double(scroll.contentView.bounds.minY), viewportHeight: Double(scroll.contentSize.height))
+    check(scroll.viewport.month == expectedMonth, "Pinned month updates while scrolling: iteration \(i), title \(scroll.viewport.month), expected \(expectedMonth)")
 }
+
+let sixWeekMonthEnd = p.engine.calendar.date(from: DateComponents(year: 2026, month: 8, day: 31, hour: 12))!
+scroll.goTo(sixWeekMonthEnd, animated: false)
+settle()
+let endRow = scroll.calendarView.weeks.offset(for: sixWeekMonthEnd)!
+check(endRow >= Double(scroll.contentView.bounds.minY) && endRow + Double(p.rowHeight) <= Double(scroll.contentView.bounds.maxY) + 0.001,
+    "Today navigation reveals the requested day even in a six-week month")
 
 scroll.goTo(Date(), animated: false)
 settle()

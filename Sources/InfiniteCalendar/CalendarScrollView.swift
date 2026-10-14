@@ -75,18 +75,23 @@ final class CalendarScrollView: NSScrollView {
             adjusting = false
         }
         calendarView.needsDisplay = true
-        updateViewport()
+        updateViewport(immediately: true)
     }
 
-    private func updateViewport() {
+    private func refreshViewport() {
+        let month = calendarView.weeks.visibleMonth(origin: Double(contentView.bounds.minY),
+            viewportHeight: Double(contentSize.height))
+        if viewport.month != month { viewport.month = month }
+    }
+
+    private func updateViewport(immediately: Bool = false) {
+        if immediately { refreshViewport(); return }
         guard !viewportUpdatePending else { return }
         viewportUpdatePending = true
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.viewportUpdatePending = false
-            let month = self.calendarView.weeks.visibleMonth(origin: Double(self.contentView.bounds.minY),
-                viewportHeight: Double(self.contentSize.height))
-            if self.viewport.month != month { self.viewport.month = month }
+            self.refreshViewport()
         }
     }
 
@@ -104,17 +109,24 @@ final class CalendarScrollView: NSScrollView {
     }
 
     func goTo(_ date: Date, offset: Double = 0, animated: Bool = true, alignToMonth: Bool = true) {
+        let requestedDate = date
         let date = alignToMonth ? preferences.engine.month(containing: date).start : date
         calendarView.hoverTimer?.invalidate()
         calendarView.hovered = nil
         calendarView.focused = nil
-        if calendarView.weeks.offset(for: date) == nil {
+        if calendarView.weeks.offset(for: date) == nil || calendarView.weeks.offset(for: requestedDate) == nil {
             adjusting = true
             calendarView.weeks.rebuild(center: date)
             calendarView.setFrameSize(NSSize(width: contentSize.width, height: CGFloat(calendarView.weeks.totalHeight)))
             adjusting = false
         }
-        let target = NSPoint(x: 0, y: CGFloat(calendarView.weeks.offset(for: date) ?? 0) + CGFloat(offset))
+        var origin = CGFloat(calendarView.weeks.offset(for: date) ?? 0) + CGFloat(offset)
+        if alignToMonth, contentSize.height > 0, let dayRow = calendarView.weeks.offset(for: requestedDate) {
+            // On a six-week month, Today must still reveal the actual current day
+            // even when the compact viewport cannot fit the entire month.
+            origin = max(origin, CGFloat(dayRow) + preferences.rowHeight - contentSize.height)
+        }
+        let target = NSPoint(x: 0, y: origin)
         let distance = abs(contentView.bounds.minY - target.y)
         if animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion && distance < 1200 {
             NSAnimationContext.runAnimationGroup { context in
@@ -125,7 +137,7 @@ final class CalendarScrollView: NSScrollView {
         } else { contentView.scroll(to: target) }
         reflectScrolledClipView(contentView)
         calendarView.needsDisplay = true
-        updateViewport()
+        updateViewport(immediately: true)
     }
 }
 
