@@ -67,7 +67,11 @@ public struct WeekWindow {
     }
 
     public func index(at y: Double) -> Int {
-        min(entries.count - 1, max(0, Int(floor(y / rowHeight))))
+        guard y.isFinite else { return y == .infinity ? entries.count - 1 : 0 }
+        let row = floor(y / rowHeight)
+        if row <= 0 { return 0 }
+        if row >= Double(entries.count - 1) { return entries.count - 1 }
+        return Int(row)
     }
 
     public func offset(for date: Date) -> Double? {

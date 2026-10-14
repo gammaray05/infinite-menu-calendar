@@ -192,6 +192,7 @@ final class CalendarDocumentView: NSView {
     }
 
     private func visibleEntries(in rect: NSRect) -> [WeekWindow.Entry] {
+        guard !rect.isEmpty, !rect.isNull, rect.minY.isFinite, rect.maxY.isFinite else { return [] }
         let first = weeks.index(at: Double(rect.minY))
         let last = weeks.index(at: Double(rect.maxY))
         return Array(weeks.entries[first...last])
@@ -218,7 +219,9 @@ final class CalendarDocumentView: NSView {
         }
         // Preserve the current shade on a reversed or interrupted transition.
         // Only visible months are retained, even during very fast long scrolling.
-        let visibleMonths = Set(visibleEntries(in: visibleRect).flatMap(\.days).map { weeks.engine.month(containing: $0).start })
+        var visibleMonths = Set(visibleEntries(in: visibleRect).flatMap(\.days).map { weeks.engine.month(containing: $0).start })
+        visibleMonths.insert(month)
+        if let emphasizedMonth { visibleMonths.insert(emphasizedMonth) }
         var from: [Date: CGFloat] = [:]
         for visibleMonth in visibleMonths { from[visibleMonth] = monthWeight(visibleMonth) }
         monthAnimationTimer?.invalidate(); monthAnimationTimer = nil

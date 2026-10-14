@@ -132,4 +132,13 @@ final class CalendarEngineTests: XCTestCase {
         }
     }
 
+    func testOffscreenAndExtremeCoordinatesAreClampedSafely() {
+        let w = WeekWindow(center: Date(), engine: engine())
+        XCTAssertEqual(w.index(at: .infinity), w.entries.count - 1)
+        XCTAssertEqual(w.index(at: -.infinity), 0)
+        XCTAssertEqual(w.index(at: .nan), 0)
+        XCTAssertEqual(w.index(at: .greatestFiniteMagnitude), w.entries.count - 1)
+        XCTAssertEqual(w.index(at: -.greatestFiniteMagnitude), 0)
+    }
+
 }
