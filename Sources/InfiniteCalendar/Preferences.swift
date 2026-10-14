@@ -24,7 +24,7 @@ final class Preferences: ObservableObject {
         let d = UserDefaults.standard
         d.register(defaults: ["theme": "auto", "accent": "3478F6", "todayColor": "3478F6",
             "hover": true, "firstWeekday": 0, "language": "auto", "weekNumbers": false,
-            "textSize": 1, "panelHeight": 1, "weekends": true, "openToday": true, "escapeCloses": true])
+            "textSize": 1, "panelHeight": 2, "weekends": true, "openToday": true, "escapeCloses": true])
         theme = d.string(forKey: "theme")!; accent = d.string(forKey: "accent")!
         todayColor = d.string(forKey: "todayColor")!; hover = d.bool(forKey: "hover")
         firstWeekday = d.integer(forKey: "firstWeekday"); language = d.string(forKey: "language")!
@@ -73,11 +73,11 @@ enum StatusDayIcon {
 
     static func make(date: Date, calendar: Calendar, locale: Locale) -> NSImage {
         let day = dayText(date: date, calendar: calendar, locale: locale)
-        let size = NSSize(width: 18, height: 18)
+        let size = NSSize(width: 18, height: 16)
         let image = NSImage(size: size, flipped: false) { rect in
             NSColor.black.setFill()
             NSBezierPath(roundedRect: rect, xRadius: 3.5, yRadius: 3.5).fill()
-            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold), .foregroundColor: NSColor.black]
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold), .foregroundColor: NSColor.black]
             let text = day as NSString
             let measured = text.size(withAttributes: attrs)
             NSGraphicsContext.saveGraphicsState()

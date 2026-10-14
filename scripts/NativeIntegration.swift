@@ -10,7 +10,8 @@ func settle() { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03)) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let p = Preferences()
-p.language = "it_IT"; p.firstWeekday = 2; p.textSize = 1; p.panelHeight = 1
+check(p.panelHeight == 2, "Extended is the default panel height")
+p.language = "it_IT"; p.firstWeekday = 2; p.textSize = 1; p.panelHeight = 2
 p.weekNumbers = false; p.openToday = true
 let scroll = CalendarScrollView(preferences: p)
 let root = CalendarPopover(preferences: p, viewport: scroll.viewport, scroll: scroll, settings: {}, quit: {})
@@ -24,7 +25,7 @@ settle()
 scroll.open()
 settle()
 check(scroll.contentSize.width > 250, "Native scroll has a valid width")
-check(scroll.contentSize.height > 130 && scroll.contentSize.height < 200, "Native scroll has a month-sized height")
+check(scroll.contentSize.height > 180 && scroll.contentSize.height < 230, "Default native scroll fits approximately six weeks")
 check(p.height < 280, "Default popover is approximately one month tall")
 check(!scroll.hasVerticalScroller && scroll.contentSize.width == host.bounds.width, "Fixed weekdays align with the grid without a scrollbar gutter")
 let current = p.engine.startOfWeek(containing: p.engine.month(containing: Date()).start)
@@ -88,7 +89,7 @@ let nextDay = p.engine.calendar.date(byAdding: .day, value: 1, to: fixedDay)!
 check(StatusDayIcon.dayText(date: fixedDay, calendar: p.engine.calendar, locale: p.locale) == "14", "Menu bar shows the day number")
 check(StatusDayIcon.dayText(date: nextDay, calendar: p.engine.calendar, locale: p.locale) == "15", "Day number updates after midnight")
 let badge = StatusDayIcon.make(date: fixedDay, calendar: p.engine.calendar, locale: p.locale)
-check(badge.isTemplate && badge.size == NSSize(width: 18, height: 18), "Day badge is small, square and adapts to menu bar appearance")
+check(badge.isTemplate && badge.size == NSSize(width: 18, height: 16), "Day badge is small, slightly flattened and adapts to menu bar appearance")
 if let rep = NSBitmapImageRep(data: badge.tiffRepresentation!), let png = rep.representation(using: .png, properties: [:]) {
     try png.write(to: URL(fileURLWithPath: "build/native-day-icon.png"))
     let colors = (4..<(rep.pixelsHigh - 4)).flatMap { y in
@@ -146,5 +147,5 @@ check(animationDocument.monthAnimationTimer == nil && abs(animationDocument.text
 check(abs(animationDocument.textOpacity(for: activeDay) - adjacentOpacity) < 0.001, "Outgoing month becomes gray after switching")
 
 document.setEmphasizedMonth(scroll.viewport.month, animated: false)
-print("PASS: continuous weekly layout, pinned month emphasis, adjacent-month dimming, readable weekends, animated and reversed transitions, Reduce Motion, small square day badge, 40 bidirectional recentrings, fractional offsets, VoiceOver labels, rendering and position persistence.")
+print("PASS: continuous weekly layout, pinned month emphasis, adjacent-month dimming, readable weekends, animated and reversed transitions, Reduce Motion, small flattened day badge, 40 bidirectional recentrings, fractional offsets, VoiceOver labels, rendering and position persistence.")
 window.orderOut(nil)
