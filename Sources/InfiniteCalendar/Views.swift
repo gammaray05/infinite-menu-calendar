@@ -2,10 +2,6 @@ import AppKit
 import SwiftUI
 import ServiceManagement
 
-final class CalendarClock: ObservableObject {
-    @Published var now = Date()
-}
-
 struct CalendarSurface: NSViewRepresentable {
     let scroll: CalendarScrollView
     @ObservedObject var preferences: Preferences
@@ -15,22 +11,37 @@ struct CalendarSurface: NSViewRepresentable {
 
 struct CalendarPopover: View {
     @ObservedObject var preferences: Preferences
-    @ObservedObject var clock: CalendarClock
+    @ObservedObject var viewport: CalendarViewport
     let scroll: CalendarScrollView
     let settings: () -> Void
     let quit: () -> Void
 
-    private var today: String {
+    private var monthTitle: String {
         let f = DateFormatter()
         f.locale = preferences.locale; f.calendar = preferences.engine.calendar
-        f.setLocalizedDateFormatFromTemplate("EEE d MMM")
-        return f.string(from: clock.now)
+        f.setLocalizedDateFormatFromTemplate("MMMM yyyy")
+        return f.string(from: viewport.month)
+    }
+
+    private var weekdaySymbols: [String] {
+        let f = DateFormatter()
+        f.locale = preferences.locale; f.calendar = preferences.engine.calendar
+        let symbols = f.veryShortStandaloneWeekdaySymbols ?? ["S", "M", "T", "W", "T", "F", "S"]
+        return (0..<7).map { symbols[(preferences.engine.calendar.firstWeekday - 1 + $0) % 7] }
+    }
+
+    private var weekdayNames: [String] {
+        let f = DateFormatter()
+        f.locale = preferences.locale; f.calendar = preferences.engine.calendar
+        let names = f.standaloneWeekdaySymbols ?? weekdaySymbols
+        return (0..<7).map { names[(preferences.engine.calendar.firstWeekday - 1 + $0) % 7] }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Text(today).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                Text(monthTitle).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                    .accessibilityIdentifier("visible-month")
                 Spacer(minLength: 0)
                 Button(preferences.text("Oggi", "Today")) { scroll.goTo(Date()) }
                     .buttonStyle(.bordered).controlSize(.small)
@@ -46,6 +57,19 @@ struct CalendarPopover: View {
                     .accessibilityLabel(preferences.text("Menu applicazione", "Application menu"))
             }.padding(.horizontal, 18).padding(.vertical, 12)
             Divider().padding(.horizontal, 16)
+            HStack(spacing: 0) {
+                ForEach(0..<7, id: \.self) { i in
+                    Text(weekdaySymbols[i])
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityLabel(weekdayNames[i])
+                }
+            }
+            .padding(.leading, preferences.weekNumbers ? 40 : 16)
+            .padding(.trailing, 16)
+            .frame(height: 28)
+            .accessibilityIdentifier("weekday-header")
             CalendarSurface(scroll: scroll, preferences: preferences)
         }
         .frame(width: 328, height: preferences.height)

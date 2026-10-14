@@ -44,7 +44,7 @@ final class Preferences: ObservableObject {
     }
     var fontSize: CGFloat { [12, 14, 16][min(2, max(0, textSize))] }
     var rowHeight: CGFloat { fontSize + 18 }
-    var height: CGFloat { [380, 480, 600][min(2, max(0, panelHeight))] }
+    var height: CGFloat { CGFloat([4, 5, 6][min(2, max(0, panelHeight))]) * rowHeight + 70 }
     var layoutKey: String {
         "\(engine.calendar.identifier)|\(locale.identifier)|\(engine.calendar.timeZone.identifier)|\(engine.calendar.firstWeekday)|\(textSize)|\(weekNumbers)"
     }
@@ -55,11 +55,40 @@ final class Preferences: ObservableObject {
     func text(_ italian: String, _ english: String) -> String {
         locale.language.languageCode?.identifier == "it" ? italian : english
     }
-    var lastMonth: Date { Date(timeIntervalSince1970: defaults.object(forKey: "lastMonth") as? Double ?? Date().timeIntervalSince1970) }
-    var lastOffset: Double { defaults.double(forKey: "lastOffset") }
-    func remember(month: Date, offset: Double) {
-        defaults.set(month.timeIntervalSince1970, forKey: "lastMonth")
-        defaults.set(offset, forKey: "lastOffset")
+    var lastWeek: Date { Date(timeIntervalSince1970: defaults.object(forKey: "lastVisibleWeek") as? Double ?? Date().timeIntervalSince1970) }
+    var lastOffset: Double { defaults.double(forKey: "lastWeekOffset") }
+    func remember(week: Date, offset: Double) {
+        defaults.set(week.timeIntervalSince1970, forKey: "lastVisibleWeek")
+        defaults.set(offset, forKey: "lastWeekOffset")
+    }
+}
+
+enum StatusDayIcon {
+    static func dayText(date: Date, calendar: Calendar, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar; formatter.locale = locale; formatter.timeZone = calendar.timeZone
+        formatter.setLocalizedDateFormatFromTemplate("d")
+        return formatter.string(from: date)
+    }
+
+    static func make(date: Date, calendar: Calendar, locale: Locale) -> NSImage {
+        let day = dayText(date: date, calendar: calendar, locale: locale)
+        let size = NSSize(width: 28, height: 18)
+        let image = NSImage(size: size, flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .bold), .foregroundColor: NSColor.black]
+            let text = day as NSString
+            let measured = text.size(withAttributes: attrs)
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current?.compositingOperation = .destinationOut
+            NSGraphicsContext.current?.cgContext.setBlendMode(.destinationOut)
+            text.draw(at: NSPoint(x: rect.midX - measured.width / 2, y: rect.midY - measured.height / 2), withAttributes: attrs)
+            NSGraphicsContext.restoreGraphicsState()
+            return true
+        }
+        image.isTemplate = true
+        return image
     }
 }
 

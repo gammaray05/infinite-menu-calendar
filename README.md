@@ -1,6 +1,6 @@
 # InfiniteCalendar
 
-A native, offline macOS menu bar calendar with continuous bidirectional month scrolling. Swift, SwiftUI and AppKit; macOS 14+; Apple Silicon. No external dependencies, events, accounts, networking, permissions or telemetry.
+A native, offline macOS menu bar calendar with continuous bidirectional week scrolling. Swift, SwiftUI and AppKit; macOS 14+; Apple Silicon. No external dependencies, events, accounts, networking, permissions or telemetry.
 
 ## Download and install
 
@@ -8,11 +8,13 @@ In GitHub **Actions → Build Release DMG**, open the latest successful run and 
 
 ## Architecture
 
-- `Sources/CalendarCore/CalendarEngine.swift`: Foundation calendar arithmetic, variable week rows, DST-aware days and a bounded 121-month coordinate window.
-- `CalendarScrollView.swift`: native NSScrollView and a virtual document view drawing only visible months. At either edge it rebuilds around the visible month and compensates the clip origin by the exact pixel offset. Native wheel and momentum events continue over the entire view, including day numbers. Date metadata is bounded; there is no growing view hierarchy.
+- `Sources/CalendarCore/CalendarEngine.swift`: Foundation calendar arithmetic, DST-aware days and a bounded 313-week coordinate window with seven real dates per row and no duplicated or missing cells at month boundaries.
+- `CalendarScrollView.swift`: native NSScrollView and a virtual document view drawing only visible weeks. At either edge it rebuilds around the visible week and compensates the clip origin by the exact pixel offset. Native wheel and momentum events continue over the entire view, including day numbers. Date metadata is bounded; there is no growing view hierarchy.
 - `AppDelegate.swift`: NSStatusItem, transient NSPopover, settings window, Escape handling, day/timezone/locale refresh and remembered scroll position. No primary window and no Dock icon.
-- `Views.swift`: SwiftUI header and settings; colors, themes, sizes, local language, week numbers and SMAppService login registration.
+- `Views.swift`: fixed SwiftUI month and weekday headers and settings; colors, themes, sizes, local language, week numbers and SMAppService login registration.
 - `Preferences.swift`: local UserDefaults persistence; system calendar and timezone, regional first weekday and calendar language. Calendars with leap months are handled by Foundation month intervals rather than a fixed twelve-month assumption.
+
+The menu bar shows today’s number in a rounded badge that follows the system menu bar appearance. The popover has a fixed month title, fixed weekday names and about five visible weeks by default. The title follows the month at the center of the visible grid; dates flow continuously through month and year changes. Weekend numbers use 82% of the normal text opacity, or full contrast when Increase Contrast is enabled.
 
 Hover animations run for 120 ms only while changing hovered days. Reduce Motion disables hover and popover animation. Today navigation animates nearby movement and jumps directly over distant dates. VoiceOver exposes the visible dates with full localized labels. Arrow keys navigate dates; Page Up/Down scroll; Home returns to today.
 
@@ -29,6 +31,6 @@ The release script invokes Xcode's Release compiler for arm64, creates the nativ
 
 ## Validation scope
 
-Automated tests cover leap years including century rules, Monday/Sunday alignment, four/five/six-week months, DST across four timezones, December/January, Gregorian/Hebrew/Islamic/Buddhist/Japanese calendars, 1,000 coordinate recentrings and large scroll jumps. CI validates compilation, packaging, signatures and basic process launch. Trackpad feel, VoiceOver interaction, multi-monitor behavior and login registration require interactive testing on a Mac; automated process launch does not certify these experiences. Foundation's representable date range is finite, but navigation is not limited to a fixed user-facing date range.
+Automated tests cover leap years including century rules, Monday/Sunday alignment, four/five/six-week months, DST across four timezones, December/January, Gregorian/Hebrew/Islamic/Buddhist/Japanese calendars, 1,000 coordinate recentrings, large scroll jumps, continuous date coverage, and the viewport-driven month title. Native integration tests also validate 40 bidirectional recentrings, day hit targets, compact panel height, weekday alignment, readable weekend colors, midnight day-number changes, badge rendering, VoiceOver labels, appearance rendering and scroll restoration. CI validates compilation, packaging, signatures and basic process launch. Trackpad feel, VoiceOver interaction, multi-monitor behavior and login registration require interactive testing on a Mac; automated process launch does not certify these experiences. Foundation's representable date range is finite, but navigation is not limited to a fixed user-facing date range.
 
 Notarized distribution requires an Apple Developer ID certificate and notarization credentials; this repository's default workflow uses no signing secrets.

@@ -4,7 +4,6 @@ import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let preferences = Preferences()
-    private let clock = CalendarClock()
     private var statusItem: NSStatusItem!
     private let popover = NSPopover()
     private var scroll: CalendarScrollView!
@@ -18,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.setActivationPolicy(.accessory)
         scroll = CalendarScrollView(preferences: preferences)
         scroll.onEscape = { [weak self] in self?.popover.performClose(nil) }
-        let root = CalendarPopover(preferences: preferences, clock: clock, scroll: scroll,
+        let root = CalendarPopover(preferences: preferences, viewport: scroll.viewport, scroll: scroll,
             settings: { [weak self] in self?.showSettings() }, quit: { NSApp.terminate(nil) })
         let controller = NSHostingController(rootView: root)
         popover.contentViewController = controller
@@ -26,11 +25,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         popover.behavior = .transient
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         popover.delegate = self
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: 36)
         if let button = statusItem.button {
-            let image = NSImage(systemSymbolName: "calendar", accessibilityDescription: "InfiniteCalendar")
-            image?.isTemplate = true
-            button.image = image
             button.target = self
             button.action = #selector(statusClicked(_:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -64,6 +60,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         settingsWindow?.appearance = preferences.appearance
         popover.contentSize = NSSize(width: 328, height: preferences.height)
         scroll.configure()
+        updateStatusDayIcon()
+    }
+
+    private func updateStatusDayIcon() {
+        guard let button = statusItem?.button else { return }
+        let date = Date()
+        button.image = StatusDayIcon.make(date: date, calendar: preferences.engine.calendar, locale: preferences.locale)
+        let formatter = DateFormatter()
+        formatter.calendar = preferences.engine.calendar; formatter.locale = preferences.locale
+        formatter.timeZone = preferences.engine.calendar.timeZone; formatter.dateStyle = .full
+        let label = "InfiniteCalendar — " + formatter.string(from: date)
+        button.toolTip = label
+        button.setAccessibilityLabel(label)
     }
 
     @objc private func statusClicked(_ sender: Any?) {
@@ -81,7 +90,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         if popover.isShown { popover.performClose(nil); return }
         guard let button = statusItem.button else { return }
-        clock.now = Date()
+        updateStatusDayIcon()
         popover.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         popover.contentViewController?.view.window?.makeKey()
@@ -107,7 +116,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     private func environmentChanged() {
-        clock.now = Date()
+        updateStatusDayIcon()
         scroll.configure(force: true)
         scheduleDayRefresh()
     }

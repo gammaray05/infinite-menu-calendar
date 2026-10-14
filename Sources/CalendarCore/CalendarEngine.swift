@@ -34,20 +34,18 @@ public struct CalendarEngine {
     }
 }
 
-/// A bounded coordinate window. Rebuilding around the visible month preserves
-/// its exact pixel offset; only the visible portion is drawn by the AppKit view.
-public struct MonthWindow {
+/// A continuous, bounded sequence of weeks. Every date appears exactly once;
+/// crossing a month never inserts padding, an empty cell or a duplicate week.
+public struct WeekWindow {
     public struct Entry {
-        public let month: Month
+        public let start: Date
+        public let days: [Date]
         public let y: Double
-        public let height: Double
     }
-    public static let radius = 60
+    public static let radius = 156
     public private(set) var entries: [Entry] = []
-    public var totalHeight: Double { entries.last.map { $0.y + $0.height } ?? 0 }
+    public var totalHeight: Double { Double(entries.count) * rowHeight }
     public var rowHeight: Double
-    public let headerHeight: Double = 58
-    public let bottomPadding: Double = 18
     public var engine: CalendarEngine
 
     public init(center: Date, engine: CalendarEngine, rowHeight: Double = 32) {
@@ -58,39 +56,45 @@ public struct MonthWindow {
 
     public mutating func rebuild(center: Date) {
         entries.removeAll(keepingCapacity: true)
-        var start = engine.addingMonths(-Self.radius, to: center)
-        var y = 0.0
-        for _ in 0...(Self.radius * 2) {
-            let month = engine.month(containing: start)
-            let height = headerHeight + Double(month.weeks) * rowHeight + bottomPadding
-            entries.append(Entry(month: month, y: y, height: height))
-            y += height
-            start = engine.addingMonths(1, to: start)
+        let first = engine.calendar.date(byAdding: .day, value: -Self.radius * 7,
+            to: engine.startOfWeek(containing: center))!
+        var start = first
+        for i in 0...(Self.radius * 2) {
+            let days = (0..<7).map { engine.calendar.date(byAdding: .day, value: $0, to: start)! }
+            entries.append(Entry(start: start, days: days, y: Double(i) * rowHeight))
+            start = engine.calendar.date(byAdding: .day, value: 7, to: start)!
         }
     }
 
     public func index(at y: Double) -> Int {
-        // Binary search keeps fast wheel events independent of the months traversed.
-        var low = 0, high = entries.count - 1
-        while low < high {
-            let mid = (low + high + 1) / 2
-            if entries[mid].y <= y { low = mid } else { high = mid - 1 }
-        }
-        return low
+        min(entries.count - 1, max(0, Int(floor(y / rowHeight))))
     }
 
     public func offset(for date: Date) -> Double? {
-        let start = engine.month(containing: date).start
-        return entries.first(where: { $0.month.start == start })?.y
+        let start = engine.startOfWeek(containing: date)
+        return entries.first(where: { $0.start == start })?.y
     }
 
-    /// Returns a compensated origin, or nil when no recentering is necessary.
     public mutating func recenter(origin: Double) -> Double? {
         let i = index(at: origin)
-        guard i < 12 || i > entries.count - 13 else { return nil }
-        let month = entries[i].month.start
-        let intraMonth = origin - entries[i].y
-        rebuild(center: month)
-        return offset(for: month)! + intraMonth
+        guard i < 26 || i > entries.count - 27 else { return nil }
+        let week = entries[i].start
+        let withinRow = origin - entries[i].y
+        rebuild(center: week)
+        return offset(for: week)! + withinRow
+    }
+
+    /// The month occupying the middle of the visible grid drives the fixed title.
+    public func visibleMonth(origin: Double, viewportHeight: Double) -> Date {
+        let row = entries[index(at: origin + viewportHeight / 2)]
+        return engine.month(containing: row.days[3]).start
+    }
+}
+
+extension CalendarEngine {
+    public func startOfWeek(containing date: Date) -> Date {
+        let day = calendar.startOfDay(for: date)
+        let leading = (calendar.component(.weekday, from: day) - calendar.firstWeekday + 7) % 7
+        return calendar.date(byAdding: .day, value: -leading, to: day)!
     }
 }

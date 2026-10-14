@@ -1,9 +1,16 @@
 import AppKit
+import Combine
 #if SWIFT_PACKAGE
 import CalendarCore
 #endif
 
+final class CalendarViewport: ObservableObject {
+    @Published var month = Date()
+}
+
 final class CalendarScrollView: NSScrollView {
+    let viewport = CalendarViewport()
+    private var viewportUpdatePending = false
     let calendarView: CalendarDocumentView
     private var observing: NSObjectProtocol?
     private var adjusting = false
@@ -16,7 +23,7 @@ final class CalendarScrollView: NSScrollView {
         calendarView = CalendarDocumentView(preferences: preferences)
         super.init(frame: .zero)
         drawsBackground = false
-        hasVerticalScroller = true
+        hasVerticalScroller = false
         hasHorizontalScroller = false
         scrollerStyle = .overlay
         verticalScrollElasticity = .none
@@ -35,63 +42,79 @@ final class CalendarScrollView: NSScrollView {
 
     override func layout() {
         super.layout()
-        calendarView.setFrameSize(NSSize(width: contentSize.width, height: CGFloat(calendarView.months.totalHeight)))
+        calendarView.setFrameSize(NSSize(width: contentSize.width, height: CGFloat(calendarView.weeks.totalHeight)))
+        updateViewport()
     }
 
     func configure(force: Bool = false) {
         if force || layoutKey != preferences.layoutKey {
-            let old = calendarView.months
+            let old = calendarView.weeks
             let i = old.index(at: contentView.bounds.minY)
-            let month = old.entries[i].month.start
-            let delta = contentView.bounds.minY - CGFloat(old.entries[i].y)
-            calendarView.months = MonthWindow(center: month, engine: preferences.engine, rowHeight: Double(preferences.rowHeight))
+            let week = old.entries[i].start
+            let fraction = (contentView.bounds.minY - CGFloat(old.entries[i].y)) / CGFloat(old.rowHeight)
+            calendarView.weeks = WeekWindow(center: week, engine: preferences.engine, rowHeight: Double(preferences.rowHeight))
             layoutKey = preferences.layoutKey
             adjusting = true
-            calendarView.setFrameSize(NSSize(width: max(300, contentSize.width), height: CGFloat(calendarView.months.totalHeight)))
-            contentView.scroll(to: NSPoint(x: 0, y: CGFloat(calendarView.months.offset(for: month) ?? 0) + delta))
+            calendarView.setFrameSize(NSSize(width: max(300, contentSize.width), height: CGFloat(calendarView.weeks.totalHeight)))
+            contentView.scroll(to: NSPoint(x: 0, y: CGFloat(calendarView.weeks.offset(for: week) ?? 0) + fraction * preferences.rowHeight))
             reflectScrolledClipView(contentView)
             adjusting = false
         }
         calendarView.refreshFormatters()
         calendarView.needsDisplay = true
+        updateViewport()
     }
 
     private func didScroll() {
         guard !adjusting else { return }
-        if let origin = calendarView.months.recenter(origin: Double(contentView.bounds.minY)) {
+        if let origin = calendarView.weeks.recenter(origin: Double(contentView.bounds.minY)) {
             adjusting = true
-            calendarView.setFrameSize(NSSize(width: contentSize.width, height: CGFloat(calendarView.months.totalHeight)))
+            calendarView.setFrameSize(NSSize(width: contentSize.width, height: CGFloat(calendarView.weeks.totalHeight)))
             contentView.scroll(to: NSPoint(x: 0, y: CGFloat(origin)))
             reflectScrolledClipView(contentView)
             adjusting = false
         }
         calendarView.needsDisplay = true
+        updateViewport()
+    }
+
+    private func updateViewport() {
+        guard !viewportUpdatePending else { return }
+        viewportUpdatePending = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.viewportUpdatePending = false
+            let month = self.calendarView.weeks.visibleMonth(origin: Double(self.contentView.bounds.minY),
+                viewportHeight: Double(self.contentSize.height))
+            if self.viewport.month != month { self.viewport.month = month }
+        }
     }
 
     func open() {
         configure()
         if preferences.openToday { goTo(Date(), animated: false) }
-        else { goTo(preferences.lastMonth, offset: preferences.lastOffset, animated: false) }
+        else { goTo(preferences.lastWeek, offset: preferences.lastOffset, animated: false, alignToMonth: false) }
         window?.makeFirstResponder(calendarView)
     }
 
     func remember() {
-        let m = calendarView.months
+        let m = calendarView.weeks
         let i = m.index(at: Double(contentView.bounds.minY))
-        preferences.remember(month: m.entries[i].month.start, offset: Double(contentView.bounds.minY) - m.entries[i].y)
+        preferences.remember(week: m.entries[i].start, offset: Double(contentView.bounds.minY) - m.entries[i].y)
     }
 
-    func goTo(_ date: Date, offset: Double = 0, animated: Bool = true) {
+    func goTo(_ date: Date, offset: Double = 0, animated: Bool = true, alignToMonth: Bool = true) {
+        let date = alignToMonth ? preferences.engine.month(containing: date).start : date
         calendarView.hoverTimer?.invalidate()
         calendarView.hovered = nil
         calendarView.focused = nil
-        if calendarView.months.offset(for: date) == nil {
+        if calendarView.weeks.offset(for: date) == nil {
             adjusting = true
-            calendarView.months.rebuild(center: date)
-            calendarView.setFrameSize(NSSize(width: contentSize.width, height: CGFloat(calendarView.months.totalHeight)))
+            calendarView.weeks.rebuild(center: date)
+            calendarView.setFrameSize(NSSize(width: contentSize.width, height: CGFloat(calendarView.weeks.totalHeight)))
             adjusting = false
         }
-        let target = NSPoint(x: 0, y: CGFloat(calendarView.months.offset(for: date) ?? 0) + CGFloat(offset))
+        let target = NSPoint(x: 0, y: CGFloat(calendarView.weeks.offset(for: date) ?? 0) + CGFloat(offset))
         let distance = abs(contentView.bounds.minY - target.y)
         if animated && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion && distance < 1200 {
             NSAnimationContext.runAnimationGroup { context in
@@ -102,16 +125,15 @@ final class CalendarScrollView: NSScrollView {
         } else { contentView.scroll(to: target) }
         reflectScrolledClipView(contentView)
         calendarView.needsDisplay = true
+        updateViewport()
     }
 }
 
 final class CalendarDocumentView: NSView {
-    var months: MonthWindow
+    var weeks: WeekWindow
     private let preferences: Preferences
-    private let monthFormatter = DateFormatter()
     private let dayFormatter = DateFormatter()
     private let accessibilityFormatter = DateFormatter()
-    private var weekdays: [String] = []
     var hovered: Date?
     private var previousHover: Date?
     private var hoverProgress: CGFloat = 1
@@ -123,8 +145,8 @@ final class CalendarDocumentView: NSView {
 
     init(preferences: Preferences) {
         self.preferences = preferences
-        months = MonthWindow(center: Date(), engine: preferences.engine, rowHeight: Double(preferences.rowHeight))
-        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: CGFloat(months.totalHeight)))
+        weeks = WeekWindow(center: Date(), engine: preferences.engine, rowHeight: Double(preferences.rowHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: CGFloat(weeks.totalHeight)))
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
         refreshFormatters()
@@ -133,15 +155,13 @@ final class CalendarDocumentView: NSView {
     deinit { hoverTimer?.invalidate() }
 
     func refreshFormatters() {
-        for formatter in [monthFormatter, dayFormatter, accessibilityFormatter] {
+        for formatter in [dayFormatter, accessibilityFormatter] {
             formatter.locale = preferences.locale
-            formatter.calendar = months.engine.calendar
-            formatter.timeZone = months.engine.calendar.timeZone
+            formatter.calendar = weeks.engine.calendar
+            formatter.timeZone = weeks.engine.calendar.timeZone
         }
-        monthFormatter.setLocalizedDateFormatFromTemplate("MMMM yyyy")
         dayFormatter.setLocalizedDateFormatFromTemplate("d")
         accessibilityFormatter.dateStyle = .full
-        weekdays = monthFormatter.veryShortStandaloneWeekdaySymbols ?? ["S", "M", "T", "W", "T", "F", "S"]
         setAccessibilityLabel(preferences.text("Calendario. Frecce per i giorni, Pagina su e giù per scorrere, Home per oggi.",
             "Calendar. Arrow keys navigate days, Page Up and Down scroll, Home returns to today."))
     }
@@ -149,17 +169,26 @@ final class CalendarDocumentView: NSView {
     private var leftInset: CGFloat { preferences.weekNumbers ? 40 : 16 }
     private var cellWidth: CGFloat { (bounds.width - leftInset - 16) / 7 }
 
-    private func cellFrame(entry: MonthWindow.Entry, day: Int) -> NSRect {
-        let cell = entry.month.leadingDays + day
-        return NSRect(x: leftInset + CGFloat(cell % 7) * cellWidth,
-            y: CGFloat(entry.y + months.headerHeight) + CGFloat(cell / 7) * preferences.rowHeight,
+    func cellFrame(entry: WeekWindow.Entry, day: Int) -> NSRect {
+        NSRect(x: leftInset + CGFloat(day) * cellWidth, y: CGFloat(entry.y),
             width: cellWidth, height: preferences.rowHeight)
     }
 
-    private func visibleEntries(in rect: NSRect) -> [MonthWindow.Entry] {
-        let first = months.index(at: Double(rect.minY))
-        let last = months.index(at: Double(rect.maxY))
-        return Array(months.entries[first...last])
+    private func visibleEntries(in rect: NSRect) -> [WeekWindow.Entry] {
+        let first = weeks.index(at: Double(rect.minY))
+        let last = weeks.index(at: Double(rect.maxY))
+        return Array(weeks.entries[first...last])
+    }
+
+    func dayColor(for date: Date, now: Date = Date()) -> NSColor {
+        if weeks.engine.calendar.isDate(date, inSameDayAs: now) {
+            return NSColor.hex(preferences.todayColor).contrastingText
+        }
+        if preferences.weekends && weeks.engine.calendar.isDateInWeekend(date)
+            && !NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
+            return NSColor.labelColor.withAlphaComponent(0.82)
+        }
+        return .labelColor
     }
 
     private func drawText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor, centered: Bool = true) {
@@ -172,28 +201,18 @@ final class CalendarDocumentView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard !dirtyRect.intersection(visibleRect).isEmpty else { return }
-        let c = months.engine.calendar
+        let c = weeks.engine.calendar
         let now = Date()
+        let weekFormatter = NumberFormatter()
+        weekFormatter.locale = preferences.locale
         for e in visibleEntries(in: dirtyRect.intersection(visibleRect)) {
-            drawText(monthFormatter.string(from: e.month.start),
-                in: NSRect(x: 18, y: CGFloat(e.y) + 2, width: bounds.width - 36, height: 30),
-                font: .systemFont(ofSize: preferences.fontSize, weight: .semibold), color: .labelColor, centered: false)
-            for column in 0..<7 {
-                let weekday = (c.firstWeekday - 1 + column) % 7
-                drawText(weekdays[weekday], in: NSRect(x: leftInset + CGFloat(column) * cellWidth,
-                    y: CGFloat(e.y) + 33, width: cellWidth, height: 21),
-                    font: .systemFont(ofSize: 11, weight: .medium), color: .secondaryLabelColor)
-            }
             if preferences.weekNumbers {
-                for row in 0..<e.month.weeks {
-                    let number = c.component(.weekOfYear, from: months.engine.weekStart(in: e.month, row: row))
-                    let formatter = NumberFormatter(); formatter.locale = preferences.locale
-                    drawText(formatter.string(from: NSNumber(value: number)) ?? String(number),
-                        in: NSRect(x: 8, y: CGFloat(e.y + months.headerHeight) + CGFloat(row) * preferences.rowHeight,
-                            width: 26, height: preferences.rowHeight), font: .systemFont(ofSize: 10), color: .secondaryLabelColor)
-                }
+                let number = c.component(.weekOfYear, from: e.start)
+                drawText(weekFormatter.string(from: NSNumber(value: number)) ?? String(number),
+                    in: NSRect(x: 8, y: CGFloat(e.y), width: 26, height: preferences.rowHeight),
+                    font: .systemFont(ofSize: 10), color: .secondaryLabelColor)
             }
-            for (i, date) in e.month.days.enumerated() {
+            for (i, date) in e.days.enumerated() {
                 let rect = cellFrame(entry: e, day: i)
                 guard rect.intersects(dirtyRect) else { continue }
                 let today = c.isDate(date, inSameDayAs: now)
@@ -210,8 +229,7 @@ final class CalendarDocumentView: NSView {
                     NSColor.hex(preferences.accent).setStroke()
                     let path = NSBezierPath(ovalIn: disk.insetBy(dx: -1, dy: -1)); path.lineWidth = 1.5; path.stroke()
                 }
-                let color: NSColor = today ? NSColor.hex(preferences.todayColor).contrastingText
-                    : (preferences.weekends && c.isDateInWeekend(date) ? .secondaryLabelColor : .labelColor)
+                let color = dayColor(for: date, now: now)
                 drawText(dayFormatter.string(from: date), in: rect,
                     font: .monospacedDigitSystemFont(ofSize: preferences.fontSize, weight: today ? .semibold : .regular), color: color)
             }
@@ -224,14 +242,12 @@ final class CalendarDocumentView: NSView {
         super.updateTrackingAreas()
     }
 
-    private func date(at point: NSPoint) -> Date? {
-        let e = months.entries[months.index(at: Double(point.y))]
+    func date(at point: NSPoint) -> Date? {
         guard point.x >= leftInset, point.x < bounds.width - 16,
-            point.y >= CGFloat(e.y + months.headerHeight) else { return nil }
-        let row = Int((point.y - CGFloat(e.y + months.headerHeight)) / preferences.rowHeight)
+            point.y >= 0, point.y < bounds.height, cellWidth > 0 else { return nil }
+        let entry = weeks.entries[weeks.index(at: Double(point.y))]
         let column = Int((point.x - leftInset) / cellWidth)
-        let index = row * 7 + column - e.month.leadingDays
-        return e.month.days.indices.contains(index) ? e.month.days[index] : nil
+        return entry.days.indices.contains(column) ? entry.days[column] : nil
     }
 
     private func setHover(_ date: Date?) {
@@ -272,12 +288,12 @@ final class CalendarDocumentView: NSView {
         let amount: Int
         switch event.keyCode { case 123: amount = -1; case 124: amount = 1
         case 125: amount = 7; case 126: amount = -7; default: super.keyDown(with: event); return }
-        let base = focused ?? months.entries[months.index(at: Double(visibleRect.minY))].month.start
-        guard let next = months.engine.calendar.date(byAdding: .day, value: amount, to: base) else { return }
-        if months.offset(for: next) == nil { scroll.goTo(next, animated: false) }
+        let base = focused ?? weeks.entries[weeks.index(at: Double(visibleRect.minY))].start
+        guard let next = weeks.engine.calendar.date(byAdding: .day, value: amount, to: base) else { return }
+        if weeks.offset(for: next) == nil { scroll.goTo(next, animated: false, alignToMonth: false) }
         focused = next
-        if let e = months.entries.first(where: { $0.month.start == months.engine.month(containing: next).start }),
-           let i = e.month.days.firstIndex(where: { months.engine.calendar.isDate($0, inSameDayAs: next) }) {
+        if let e = weeks.entries.first(where: { $0.start == weeks.engine.startOfWeek(containing: next) }),
+           let i = e.days.firstIndex(where: { weeks.engine.calendar.isDate($0, inSameDayAs: next) }) {
             scrollToVisible(cellFrame(entry: e, day: i).insetBy(dx: 0, dy: -8))
         }
         needsDisplay = true
@@ -287,15 +303,11 @@ final class CalendarDocumentView: NSView {
     override func accessibilityChildren() -> [Any]? {
         var elements: [NSAccessibilityElement] = []
         for e in visibleEntries(in: visibleRect) {
-            let header = NSAccessibilityElement.element(withRole: .staticText, frame: .zero,
-                label: monthFormatter.string(from: e.month.start), parent: self) as! NSAccessibilityElement
-            header.setAccessibilityFrameInParentSpace(NSRect(x: 18, y: CGFloat(e.y), width: bounds.width - 36, height: 30))
-            elements.append(header)
-            for (i, date) in e.month.days.enumerated() {
+            for (i, date) in e.days.enumerated() {
                 let rect = cellFrame(entry: e, day: i)
                 guard rect.intersects(visibleRect) else { continue }
                 var label = accessibilityFormatter.string(from: date)
-                if months.engine.calendar.isDateInToday(date) { label += preferences.text(", oggi", ", today") }
+                if weeks.engine.calendar.isDateInToday(date) { label += preferences.text(", oggi", ", today") }
                 let element = NSAccessibilityElement.element(withRole: .staticText, frame: .zero, label: label, parent: self) as! NSAccessibilityElement
                 element.setAccessibilityFrameInParentSpace(rect)
                 elements.append(element)
