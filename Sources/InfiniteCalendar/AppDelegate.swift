@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         let center = NotificationCenter.default
         for name in [NSLocale.currentLocaleDidChangeNotification, NSNotification.Name.NSSystemTimeZoneDidChange,
-                     NSNotification.Name.NSSystemClockDidChange, NSCalendar.dayChangedNotification] {
+                     NSNotification.Name.NSSystemClockDidChange, NSNotification.Name.NSCalendarDayChanged] {
             notificationTokens.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                 self?.environmentChanged()
             })

@@ -171,6 +171,7 @@ final class CalendarDocumentView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard !dirtyRect.intersection(visibleRect).isEmpty else { return }
         let c = months.engine.calendar
         let now = Date()
         for e in visibleEntries(in: dirtyRect.intersection(visibleRect)) {
@@ -287,7 +288,7 @@ final class CalendarDocumentView: NSView {
         var elements: [NSAccessibilityElement] = []
         for e in visibleEntries(in: visibleRect) {
             let header = NSAccessibilityElement.element(withRole: .staticText, frame: .zero,
-                label: monthFormatter.string(from: e.month.start), parent: self)
+                label: monthFormatter.string(from: e.month.start), parent: self) as! NSAccessibilityElement
             header.setAccessibilityFrameInParentSpace(NSRect(x: 18, y: CGFloat(e.y), width: bounds.width - 36, height: 30))
             elements.append(header)
             for (i, date) in e.month.days.enumerated() {
@@ -295,7 +296,7 @@ final class CalendarDocumentView: NSView {
                 guard rect.intersects(visibleRect) else { continue }
                 var label = accessibilityFormatter.string(from: date)
                 if months.engine.calendar.isDateInToday(date) { label += preferences.text(", oggi", ", today") }
-                let element = NSAccessibilityElement.element(withRole: .staticText, frame: .zero, label: label, parent: self)
+                let element = NSAccessibilityElement.element(withRole: .staticText, frame: .zero, label: label, parent: self) as! NSAccessibilityElement
                 element.setAccessibilityFrameInParentSpace(rect)
                 elements.append(element)
             }
