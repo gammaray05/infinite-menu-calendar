@@ -13,7 +13,7 @@ iconutil -c icns build/AppIcon.iconset -o "$APP/Contents/Resources/AppIcon.icns"
 codesign --force --sign - --options runtime "$APP"
 codesign --verify --deep --strict --verbose=2 "$APP"
 file "$APP/Contents/MacOS/InfiniteCalendar" | tee build/binary-info.txt
-lipo -verify_arch arm64 "$APP/Contents/MacOS/InfiniteCalendar"
+lipo "$APP/Contents/MacOS/InfiniteCalendar" -verify_arch arm64
 plutil -lint "$APP/Contents/Info.plist"
 mkdir -p build/dmg-root
 ditto "$APP" build/dmg-root/InfiniteCalendar.app

@@ -27,6 +27,8 @@ jobs:
           swift test --configuration release 2>&1 | tee build/tests.log
       - name: Build and verify Release DMG
         run: bash scripts/build-release.sh
+      - name: Native layout, scrolling, accessibility and rendering
+        run: bash scripts/test-native.sh
       - name: Verify mounted DMG and smoke-launch the installed app
         run: |
           set -euo pipefail
@@ -63,6 +65,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: build-diagnostics
-          path: build/*.log
+          path: |
+            build/*.log
+            build/native-*.png
           if-no-files-found: ignore
           retention-days: 14
