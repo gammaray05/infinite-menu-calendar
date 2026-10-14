@@ -1,0 +1,68 @@
+name: Build Release DMG
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  release:
+    name: Apple Silicon Release
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          uname -m
+      - name: Calendar correctness and scrolling tests
+        run: |
+          set -o pipefail
+          mkdir -p build
+          swift test --configuration release 2>&1 | tee build/tests.log
+      - name: Build and verify Release DMG
+        run: bash scripts/build-release.sh
+      - name: Verify mounted DMG and smoke-launch the installed app
+        run: |
+          set -euo pipefail
+          mkdir -p build/mounted
+          hdiutil attach build/InfiniteCalendar.dmg -readonly -nobrowse -mountpoint "$PWD/build/mounted"
+          trap 'hdiutil detach "$PWD/build/mounted" || true' EXIT
+          test -L build/mounted/Applications
+          codesign --verify --deep --strict build/mounted/InfiniteCalendar.app
+          ditto build/mounted/InfiniteCalendar.app build/SmokeTest/InfiniteCalendar.app
+          build/SmokeTest/InfiniteCalendar.app/Contents/MacOS/InfiniteCalendar > build/launch.log 2>&1 &
+          APP_PID=$!
+          sleep 3
+          kill -0 "$APP_PID"
+          kill "$APP_PID"
+          echo 'App launched and remained running for 3 seconds.' | tee -a build/launch.log
+      - name: Upload installable DMG
+        id: artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: InfiniteCalendar-macOS-AppleSilicon
+          path: |
+            build/InfiniteCalendar.dmg
+            build/InfiniteCalendar.dmg.sha256
+          if-no-files-found: error
+          retention-days: 90
+      - name: Build summary
+        run: |
+          echo '## InfiniteCalendar — Release' >> "$GITHUB_STEP_SUMMARY"
+          echo 'macOS 14+ · Apple Silicon · Release optimized · ad-hoc signed (not notarized)' >> "$GITHUB_STEP_SUMMARY"
+          echo '[Download DMG artifact](${{ steps.artifact.outputs.artifact-url }})' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Calendar tests, signature verification, DMG verification, mounted contents and process launch passed.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: build/*.log
+          if-no-files-found: ignore
+          retention-days: 14
