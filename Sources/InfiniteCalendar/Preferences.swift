@@ -73,11 +73,11 @@ enum StatusDayIcon {
 
     static func make(date: Date, calendar: Calendar, locale: Locale) -> NSImage {
         let day = dayText(date: date, calendar: calendar, locale: locale)
-        let size = NSSize(width: 28, height: 18)
+        let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size, flipped: false) { rect in
             NSColor.black.setFill()
-            NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4).fill()
-            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .bold), .foregroundColor: NSColor.black]
+            NSBezierPath(roundedRect: rect, xRadius: 3.5, yRadius: 3.5).fill()
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .semibold), .foregroundColor: NSColor.black]
             let text = day as NSString
             let measured = text.size(withAttributes: attrs)
             NSGraphicsContext.saveGraphicsState()

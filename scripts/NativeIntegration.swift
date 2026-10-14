@@ -45,6 +45,7 @@ for i in 0..<40 {
     check(adjusted.entries.count == 313, "Native week storage remains bounded")
     let expectedMonth = adjusted.visibleMonth(origin: Double(scroll.contentView.bounds.minY), viewportHeight: Double(scroll.contentSize.height))
     check(scroll.viewport.month == expectedMonth, "Pinned month updates while scrolling: iteration \(i), title \(scroll.viewport.month), expected \(expectedMonth)")
+    check(scroll.calendarView.emphasizedMonth == expectedMonth, "Day emphasis follows the exact month in the pinned title")
 }
 
 let sixWeekMonthEnd = p.engine.calendar.date(from: DateComponents(year: 2026, month: 8, day: 31, hour: 12))!
@@ -62,6 +63,7 @@ for (appearance, name) in [(NSAppearance.Name.aqua, "light"), (.darkAqua, "dark"
     scroll.configure()
     host.layoutSubtreeIfNeeded()
     settle()
+    scroll.calendarView.setEmphasizedMonth(scroll.viewport.month, animated: false)
     check((scroll.calendarView.accessibilityChildren()?.count ?? 0) > 20, "VoiceOver exposes visible dates")
     let rect = host.bounds
     guard let bitmap = host.bitmapImageRepForCachingDisplay(in: rect) else { check(false, "Create render bitmap"); exit(1) }
@@ -86,7 +88,7 @@ let nextDay = p.engine.calendar.date(byAdding: .day, value: 1, to: fixedDay)!
 check(StatusDayIcon.dayText(date: fixedDay, calendar: p.engine.calendar, locale: p.locale) == "14", "Menu bar shows the day number")
 check(StatusDayIcon.dayText(date: nextDay, calendar: p.engine.calendar, locale: p.locale) == "15", "Day number updates after midnight")
 let badge = StatusDayIcon.make(date: fixedDay, calendar: p.engine.calendar, locale: p.locale)
-check(badge.isTemplate && badge.size == NSSize(width: 28, height: 18), "Day badge adapts to menu bar appearance")
+check(badge.isTemplate && badge.size == NSSize(width: 18, height: 18), "Day badge is small, square and adapts to menu bar appearance")
 if let rep = NSBitmapImageRep(data: badge.tiffRepresentation!), let png = rep.representation(using: .png, properties: [:]) {
     try png.write(to: URL(fileURLWithPath: "build/native-day-icon.png"))
     let colors = (4..<(rep.pixelsHigh - 4)).flatMap { y in
@@ -97,14 +99,47 @@ if let rep = NSBitmapImageRep(data: badge.tiffRepresentation!), let png = rep.re
 
 let week = scroll.calendarView.weeks.entries[scroll.calendarView.weeks.index(at: Double(scroll.contentView.bounds.minY))]
 let saturday = week.days.first(where: { p.engine.calendar.component(.weekday, from: $0) == 7 })!
+scroll.calendarView.setEmphasizedMonth(saturday, animated: false)
 let color = scroll.calendarView.dayColor(for: saturday, now: fixedDay).usingColorSpace(.sRGB)!
 if !NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
-    check(abs(color.alphaComponent - 0.82) < 0.001, "Weekend text is only slightly dimmed")
+    check(abs(color.alphaComponent - 0.72) < 0.001, "Weekend text is a little grayer within the active month")
 }
 for column in 0..<7 {
     let rect = scroll.calendarView.cellFrame(entry: week, day: column)
     check(scroll.calendarView.date(at: NSPoint(x: rect.midX, y: rect.midY)) == week.days[column], "Every visible day has a correct hit target")
 }
 
-print("PASS: continuous weekly layout, pinned month updates, compact height, day-number badge, readable weekends, 40 bidirectional recentrings, fractional offsets, bounded storage, VoiceOver labels, light/dark rendering, day hit targets and position persistence.")
+let activeDay = p.engine.calendar.date(from: DateComponents(year: 2026, month: 10, day: 15, hour: 12))!
+let activeWeekend = p.engine.calendar.date(from: DateComponents(year: 2026, month: 10, day: 17, hour: 12))!
+let previousDay = p.engine.calendar.date(from: DateComponents(year: 2026, month: 9, day: 17, hour: 12))!
+let nextMonthDay = p.engine.calendar.date(from: DateComponents(year: 2026, month: 11, day: 5, hour: 12))!
+let adjacentOpacity: CGFloat = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 0.60 : 0.38
+let weekendOpacity: CGFloat = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast ? 0.90 : 0.72
+let document = scroll.calendarView
+document.setEmphasizedMonth(activeDay, animated: false)
+check(abs(document.textOpacity(for: activeDay) - 1) < 0.001, "Selected-month weekdays have full foreground contrast")
+check(abs(document.textOpacity(for: previousDay) - adjacentOpacity) < 0.001, "Previous month is gray")
+check(abs(document.textOpacity(for: nextMonthDay) - adjacentOpacity) < 0.001, "Next month is gray")
+check(abs(document.textOpacity(for: activeWeekend) - weekendOpacity) < 0.001, "Active-month weekends are subtly gray")
+p.weekends = false
+check(abs(document.textOpacity(for: activeWeekend) - 1) < 0.001, "Weekend dimming can be disabled")
+check(abs(document.textOpacity(for: nextMonthDay) - adjacentOpacity) < 0.001, "Adjacent-month dimming is independent of the weekend preference")
+p.weekends = true
+
+document.setEmphasizedMonth(nextMonthDay, animated: true, reduceMotion: false)
+check(document.monthAnimationTimer != nil && document.monthAnimationProgress == 0, "Month transition starts gently")
+check(abs(document.textOpacity(for: activeDay) - 1) < 0.001, "Outgoing month does not jump at transition start")
+RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.08))
+let intermediate = document.textOpacity(for: activeDay)
+check(intermediate > adjacentOpacity && intermediate < 1, "Outgoing month fades gradually")
+document.setEmphasizedMonth(activeDay, animated: true, reduceMotion: false)
+check(abs(document.textOpacity(for: activeDay) - intermediate) < 0.001, "Reversing a transition preserves its current shade")
+RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.24))
+check(abs(document.textOpacity(for: activeDay) - 1) < 0.001 && document.monthAnimationTimer == nil, "Transition finishes and stops its timer")
+document.setEmphasizedMonth(nextMonthDay, animated: true, reduceMotion: true)
+check(document.monthAnimationTimer == nil && abs(document.textOpacity(for: nextMonthDay) - 1) < 0.001, "Reduce Motion switches emphasis without animation")
+check(abs(document.textOpacity(for: activeDay) - adjacentOpacity) < 0.001, "Outgoing month becomes gray after switching")
+
+document.setEmphasizedMonth(scroll.viewport.month, animated: false)
+print("PASS: continuous weekly layout, pinned month emphasis, adjacent-month dimming, readable weekends, animated and reversed transitions, Reduce Motion, small square day badge, 40 bidirectional recentrings, fractional offsets, VoiceOver labels, rendering and position persistence.")
 window.orderOut(nil)

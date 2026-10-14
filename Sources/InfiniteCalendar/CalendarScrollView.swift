@@ -82,6 +82,7 @@ final class CalendarScrollView: NSScrollView {
         let month = calendarView.weeks.visibleMonth(origin: Double(contentView.bounds.minY),
             viewportHeight: Double(contentSize.height))
         if viewport.month != month { viewport.month = month }
+        calendarView.setEmphasizedMonth(month, animated: window?.isVisible == true)
     }
 
     private func updateViewport(immediately: Bool = false) {
@@ -150,6 +151,10 @@ final class CalendarDocumentView: NSView {
     private var previousHover: Date?
     private var hoverProgress: CGFloat = 1
     var hoverTimer: Timer?
+    private(set) var emphasizedMonth: Date?
+    private var initialMonthWeights: [Date: CGFloat] = [:]
+    private(set) var monthAnimationProgress: CGFloat = 1
+    private(set) var monthAnimationTimer: Timer?
     var focused: Date?
     var onEscape: (() -> Void)?
     override var isFlipped: Bool { true }
@@ -164,7 +169,7 @@ final class CalendarDocumentView: NSView {
         refreshFormatters()
     }
     required init?(coder: NSCoder) { fatalError("Programmatic view") }
-    deinit { hoverTimer?.invalidate() }
+    deinit { hoverTimer?.invalidate(); monthAnimationTimer?.invalidate() }
 
     func refreshFormatters() {
         for formatter in [dayFormatter, accessibilityFormatter] {
@@ -192,15 +197,67 @@ final class CalendarDocumentView: NSView {
         return Array(weeks.entries[first...last])
     }
 
+    private func monthWeight(_ month: Date) -> CGFloat {
+        guard let emphasizedMonth else { return 1 }
+        let target: CGFloat = month == emphasizedMonth ? 1 : 0
+        let from = initialMonthWeights[month] ?? 0
+        let eased = monthAnimationProgress * monthAnimationProgress * (3 - 2 * monthAnimationProgress)
+        return from + (target - from) * eased
+    }
+
+    func setEmphasizedMonth(_ date: Date, animated: Bool = true, reduceMotion: Bool? = nil) {
+        let month = weeks.engine.month(containing: date).start
+        let animate = animated && !(reduceMotion ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+        if emphasizedMonth == month {
+            if !animate {
+                monthAnimationTimer?.invalidate(); monthAnimationTimer = nil
+                monthAnimationProgress = 1; initialMonthWeights.removeAll()
+                needsDisplay = true
+            }
+            return
+        }
+        // Preserve the current shade on a reversed or interrupted transition.
+        // Only visible months are retained, even during very fast long scrolling.
+        let visibleMonths = Set(visibleEntries(in: visibleRect).flatMap(\.days).map { weeks.engine.month(containing: $0).start })
+        var from: [Date: CGFloat] = [:]
+        for visibleMonth in visibleMonths { from[visibleMonth] = monthWeight(visibleMonth) }
+        monthAnimationTimer?.invalidate(); monthAnimationTimer = nil
+        let hadMonth = emphasizedMonth != nil
+        emphasizedMonth = month
+        initialMonthWeights = from
+        guard animate && hadMonth else {
+            monthAnimationProgress = 1; initialMonthWeights.removeAll(); needsDisplay = true
+            return
+        }
+        monthAnimationProgress = 0
+        let start = ProcessInfo.processInfo.systemUptime
+        let timer = Timer(timeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            self.monthAnimationProgress = min(1, CGFloat((ProcessInfo.processInfo.systemUptime - start) / 0.18))
+            self.needsDisplay = true
+            if self.monthAnimationProgress >= 1 {
+                timer.invalidate(); self.monthAnimationTimer = nil; self.initialMonthWeights.removeAll()
+            }
+        }
+        monthAnimationTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+        needsDisplay = true
+    }
+
+    func textOpacity(for date: Date) -> CGFloat {
+        let increasedContrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        let background: CGFloat = increasedContrast ? 0.60 : 0.38
+        let foreground: CGFloat = preferences.weekends && weeks.engine.calendar.isDateInWeekend(date)
+            ? (increasedContrast ? 0.90 : 0.72) : 1
+        let weight = monthWeight(weeks.engine.month(containing: date).start)
+        return background + (foreground - background) * weight
+    }
+
     func dayColor(for date: Date, now: Date = Date()) -> NSColor {
         if weeks.engine.calendar.isDate(date, inSameDayAs: now) {
-            return NSColor.hex(preferences.todayColor).contrastingText
+            return NSColor.hex(preferences.todayColor).contrastingText.withAlphaComponent(textOpacity(for: date))
         }
-        if preferences.weekends && weeks.engine.calendar.isDateInWeekend(date)
-            && !NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast {
-            return NSColor.labelColor.withAlphaComponent(0.82)
-        }
-        return .labelColor
+        return NSColor.labelColor.withAlphaComponent(textOpacity(for: date))
     }
 
     private func drawText(_ text: String, in rect: NSRect, font: NSFont, color: NSColor, centered: Bool = true) {
@@ -231,7 +288,7 @@ final class CalendarDocumentView: NSView {
                 let disk = NSRect(x: rect.midX - (preferences.rowHeight - 3) / 2,
                     y: rect.minY + 1.5, width: preferences.rowHeight - 3, height: preferences.rowHeight - 3)
                 if today {
-                    NSColor.hex(preferences.todayColor).setFill()
+                    NSColor.hex(preferences.todayColor).withAlphaComponent(textOpacity(for: date)).setFill()
                     NSBezierPath(ovalIn: disk).fill()
                 } else if preferences.hover {
                     let alpha: CGFloat = date == hovered ? hoverProgress : (date == previousHover ? 1 - hoverProgress : 0)
