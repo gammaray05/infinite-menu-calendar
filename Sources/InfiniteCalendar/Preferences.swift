@@ -6,7 +6,7 @@ import CalendarCore
 #endif
 
 final class Preferences: ObservableObject {
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
     @Published var theme: String { didSet { defaults.set(theme, forKey: "theme") } }
     @Published var accent: String { didSet { defaults.set(accent, forKey: "accent") } }
     @Published var todayColor: String { didSet { defaults.set(todayColor, forKey: "todayColor") } }
@@ -20,11 +20,20 @@ final class Preferences: ObservableObject {
     @Published var openToday: Bool { didSet { defaults.set(openToday, forKey: "openToday") } }
     @Published var escapeCloses: Bool { didSet { defaults.set(escapeCloses, forKey: "escapeCloses") } }
 
-    init() {
-        let d = UserDefaults.standard
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        let d = defaults
+        if d.integer(forKey: "panelHeightScaleVersion") < 1 {
+            if let oldSize = d.object(forKey: "panelHeight") as? NSNumber {
+                // Preserve the former Normal/Extended physical heights under
+                // their new Compact/Normal names, once per installation.
+                d.set(oldSize.intValue >= 2 ? 1 : 0, forKey: "panelHeight")
+            }
+            d.set(1, forKey: "panelHeightScaleVersion")
+        }
         d.register(defaults: ["theme": "auto", "accent": "3478F6", "todayColor": "3478F6",
             "hover": true, "firstWeekday": 0, "language": "auto", "weekNumbers": false,
-            "textSize": 1, "panelHeight": 2, "weekends": true, "openToday": true, "escapeCloses": true])
+            "textSize": 1, "panelHeight": 1, "weekends": true, "openToday": true, "escapeCloses": true])
         theme = d.string(forKey: "theme")!; accent = d.string(forKey: "accent")!
         todayColor = d.string(forKey: "todayColor")!; hover = d.bool(forKey: "hover")
         firstWeekday = d.integer(forKey: "firstWeekday"); language = d.string(forKey: "language")!
@@ -44,7 +53,7 @@ final class Preferences: ObservableObject {
     }
     var fontSize: CGFloat { [12, 14, 16][min(2, max(0, textSize))] }
     var rowHeight: CGFloat { fontSize + 18 }
-    var height: CGFloat { CGFloat([4, 5, 6][min(2, max(0, panelHeight))]) * rowHeight + 70 }
+    var height: CGFloat { CGFloat([5, 6, 7][min(2, max(0, panelHeight))]) * rowHeight + 70 }
     var layoutKey: String {
         "\(engine.calendar.identifier)|\(locale.identifier)|\(engine.calendar.timeZone.identifier)|\(engine.calendar.firstWeekday)|\(textSize)|\(weekNumbers)"
     }

@@ -10,8 +10,8 @@ func settle() { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.03)) }
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)
 let p = Preferences()
-check(p.panelHeight == 2, "Extended is the default panel height")
-p.language = "it_IT"; p.firstWeekday = 2; p.textSize = 1; p.panelHeight = 2
+check(p.panelHeight == 1, "Normal is the default panel height and uses the former Extended height")
+p.language = "it_IT"; p.firstWeekday = 2; p.textSize = 1; p.panelHeight = 1
 p.weekNumbers = false; p.openToday = true
 let scroll = CalendarScrollView(preferences: p)
 let root = CalendarPopover(preferences: p, viewport: scroll.viewport, scroll: scroll, settings: {}, quit: {})
@@ -147,5 +147,18 @@ check(animationDocument.monthAnimationTimer == nil && abs(animationDocument.text
 check(abs(animationDocument.textOpacity(for: activeDay) - adjacentOpacity) < 0.001, "Outgoing month becomes gray after switching")
 
 document.setEmphasizedMonth(scroll.viewport.month, animated: false)
-print("PASS: continuous weekly layout, pinned month emphasis, adjacent-month dimming, readable weekends, animated and reversed transitions, Reduce Motion, small flattened day badge, 40 bidirectional recentrings, fractional offsets, VoiceOver labels, rendering and position persistence.")
+for (oldSelection, newSelection, expectedHeight) in [(0, 0, 230.0), (1, 0, 230.0), (2, 1, 262.0)] {
+    let domain = "InfiniteCalendar.HeightMigrationTest." + UUID().uuidString
+    let testDefaults = UserDefaults(suiteName: domain)!
+    testDefaults.set(oldSelection, forKey: "panelHeight")
+    let migrated = Preferences(defaults: testDefaults)
+    check(migrated.panelHeight == newSelection && abs(migrated.height - expectedHeight) < 0.001,
+        "Previous saved sizes migrate to the new Compact/Normal scale")
+    migrated.panelHeight = 2
+    let reloaded = Preferences(defaults: testDefaults)
+    check(reloaded.panelHeight == 2 && abs(reloaded.height - 294) < 0.001, "New Extended choice survives a restart without a second migration")
+    testDefaults.removePersistentDomain(forName: domain)
+}
+
+print("PASS: continuous weekly layout, pinned month emphasis, adjacent-month dimming, readable weekends, animated and reversed transitions, Reduce Motion, small flattened day badge, Normal default size, saved-size migration, 40 bidirectional recentrings, rendering and position persistence.")
 window.orderOut(nil)
