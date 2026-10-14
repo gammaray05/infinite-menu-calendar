@@ -1,4 +1,4 @@
-Do you like windows embedded calendar when clicking on date/time?
+Do you like Windows embedded calendar when clicking on date/time?
 You will like:
 
 # InfiniteCalendar
