@@ -1,6 +1,35 @@
+# Build output
 .build/
 build/
 DerivedData/
+*.dSYM/
+artifacts/
+diagnostics/
+recordings/
+
+# Local macOS and Xcode state
 .DS_Store
 *.xcuserstate
 xcuserdata/
+
+# Local environments and caches
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+*.py[cod]
+
+# Private signing material
+*.p12
+*.pfx
+*.p8
+*.key
+*.pem
+*.provisionprofile
+
+# Generated installers, archives and recordings
+*.dmg
+*.zip
+*.mp4
+*.mov

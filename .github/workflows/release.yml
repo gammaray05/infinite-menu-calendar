@@ -60,13 +60,11 @@ jobs:
           echo 'macOS 14+ · Apple Silicon · Release optimized · ad-hoc signed (not notarized)' >> "$GITHUB_STEP_SUMMARY"
           echo '[Download DMG artifact](${{ steps.artifact.outputs.artifact-url }})' >> "$GITHUB_STEP_SUMMARY"
           echo 'Calendar tests, signature verification, DMG verification, mounted contents and process launch passed.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload diagnostics
-        if: always()
+      - name: Upload failure logs
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-diagnostics
-          path: |
-            build/*.log
-            build/native-*.png
+          path: build/*.log
           if-no-files-found: ignore
-          retention-days: 14
+          retention-days: 3
